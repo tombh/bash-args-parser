@@ -10,14 +10,15 @@
 #   	[--bar:flag]="A boolean option that doesn't take a value"
 #   	[--foobar]="An option that requires a value"
 #   )
-#   __BAPt_parse args "$@"
+#   BAPt_parse_arguments args "$@"
+#
 #   echo "foo is ${args[foo]}. bar is ${args[foo]}. foobar is ${args[foobar]}"
 # ```
 
 __BAPt_ERROR_PREFIX='Error parsing arguments'
 __BAPt_SCRIPT_NAME=$(basename "$0")
 
-function __BAPt_parse_arguments {
+function BAPt_parse_arguments {
 	local -n arg_defs="$1"
 	shift
 	local parent_args=("$@")
@@ -25,7 +26,7 @@ function __BAPt_parse_arguments {
 	arg_defs+=([--help:flag]="Show help")
 
 	# Why build $usage now rather than as and when it's needed?
-	# $_arg_defs, which is needded to build the usage string, is an associative array
+	# $arg_defs, which is needded to build the usage string, is an associative array
 	# which are hard to copy. So it's easier to maintain a copy of the prebuilt usage
 	# rather than a copy of $arg_defs.
 	usage=$(__BAPt_build_usage arg_defs)
@@ -43,6 +44,10 @@ function __BAPt_parse_arguments {
 		return 0
 	fi
 
+	__BAPt_parse
+}
+
+function __BAPt_parse {
 	option_definitions=$(__BAPt_get_option_definitions)
 	if ! parsed=$(
 		getopt \
@@ -81,31 +86,11 @@ function __BAPt_show_usage {
 
 function __BAPt_build_usage {
 	local calling_function=${FUNCNAME[2]}
-	local widest usage positionals=() options=() description line arg_list=()
+	local widest usage command_name positionals=() options=() description line arg_list=()
 
 	widest=$(__BAPt_find_widest)
 
-	for key in "${!arg_defs[@]}"; do
-		description="${arg_defs[$key]}"
-		if [[ $key =~ ^[0-9]: ]]; then
-			name=${key/*:/}
-			index=${key//:*/}
-		else
-			name=${key//:flag/}
-		fi
-		line=$(printf "%-${widest}s %s\n" "  $name" "$description")
-		if [[ $key =~ ^[0-9]: ]]; then
-			arg_list[$index]="$name"
-			positionals[$index]=$line
-		fi
-		if [[ $key = any ]]; then
-			arg_list[0]="[ARGUMENTS]"
-			positionals[0]=$line
-		fi
-		if [[ $key =~ ^-- ]]; then
-			options+=("$line")
-		fi
-	done
+	__BAPt_extract_positionals_and_options
 
 	if [[ -n $calling_function ]]; then
 		command_name=$(basename "$calling_function")
@@ -140,6 +125,30 @@ function __BAPt_build_usage {
 		echo
 		echo "${arg_defs[details]}"
 	fi
+}
+
+function __BAPt_extract_positionals_and_options {
+	for key in "${!arg_defs[@]}"; do
+		description="${arg_defs[$key]}"
+		if [[ $key =~ ^[0-9]: ]]; then
+			name=${key/*:/}
+			index=${key//:*/}
+		else
+			name=${key//:flag/}
+		fi
+		line=$(printf "%-${widest}s %s\n" "  $name" "$description")
+		if [[ $key =~ ^[0-9]: ]]; then
+			arg_list[$index]="$name"
+			positionals[$index]=$line
+		fi
+		if [[ $key = any ]]; then
+			arg_list[0]="[ARGUMENTS]"
+			positionals[0]=$line
+		fi
+		if [[ $key =~ ^-- ]]; then
+			options+=("$line")
+		fi
+	done
 }
 
 function __BAPt_find_widest {
